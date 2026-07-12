@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LS CUSTOMS WHEELS</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="logo">LS<span>CUSTOMS</span>WHEELS</div>
+  <button class="cart-btn" id="cartBtn" aria-label="Корзина">
+    🛒<span class="cart-badge" id="cartBadge" hidden>0</span>
+  </button>
+</header>
+
+<main id="screen"></main>
+
+<nav class="tabbar">
+  <button class="tab active" data-tab="catalog"><span class="tab-ico">🛞</span><span>Каталог</span></button>
+  <button class="tab" data-tab="feedback"><span class="tab-ico">💬</span><span>Связь</span></button>
+  <button class="tab" data-tab="tryon"><span class="tab-ico">⚡</span><span>Примерка</span></button>
+</nav>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
