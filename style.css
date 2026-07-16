@@ -193,6 +193,44 @@ body {
 .quick-btn:active { border-color: var(--accent); }
 .quick-btn .q-ico { font-size: 20px; }
 
+/* Марки и галерея дисков */
+.brand-card {
+  display: block; width: 100%; padding: 0; text-align: left;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+  cursor: pointer; margin-bottom: 14px; color: var(--text);
+  transition: border-color 0.15s;
+}
+.brand-card:active { border-color: var(--accent); }
+.brand-card img { width: 100%; display: block; aspect-ratio: 4 / 3; object-fit: cover; }
+.brand-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px;
+}
+.brand-name {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 15px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+}
+.brand-count { font-size: 12px; color: var(--muted); }
+
+.wheel-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden; margin-bottom: 14px;
+}
+.wheel-card img { width: 100%; display: block; }
+.wheel-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 10px 12px;
+}
+.wheel-name { font-size: 13px; font-weight: 600; }
+
+.order-img { width: 100%; display: block; border-radius: var(--radius); margin-bottom: 12px; }
+.order-name {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 14px; font-weight: 700; letter-spacing: 0.5px;
+  margin-bottom: 16px;
+}
+
 /* Заглушка примерки */
 .stub {
   background: var(--card); border: 1px solid var(--border);
