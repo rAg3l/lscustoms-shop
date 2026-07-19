@@ -3,17 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>LS CUSTOMS WHEELS</title>
+<title>LS CUSTOMS SHOP</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
 
+<div id="intro" aria-hidden="true">
+  <canvas id="intro-canvas"></canvas>
+  <span class="intro-skip">коснитесь, чтобы пропустить</span>
+</div>
+
 <header class="topbar">
-  <div class="logo">LS<span>CUSTOMS</span>WHEELS</div>
+  <div class="logo">LS <span>CUSTOMS</span> SHOP</div>
 </header>
 
 <main id="screen"></main>
@@ -21,10 +26,9 @@
 <nav class="tabbar">
   <button class="tab active" data-tab="catalog"><span class="tab-ico">🛞</span><span>Каталог</span></button>
   <button class="tab" data-tab="feedback"><span class="tab-ico">💬</span><span>Связь</span></button>
-  <button class="tab" data-tab="tryon"><span class="tab-ico">⚡</span><span>Примерка</span></button>
 </nav>
 
-<script src="data.js"></script>
-<script src="app.js"></script>
+<script src="data.js?v=2"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>

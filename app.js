@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────
-// LS CUSTOMS WHEELS — Telegram Mini App
+// LS CUSTOMS SHOP — Telegram Mini App
 // Каталог дисков с фотогалереей и заказом в один тап
 // ─────────────────────────────────────────────
 
@@ -10,14 +10,15 @@ if (tg) {
   tg.expand();
   try {
     if (tg.isVersionAtLeast && tg.isVersionAtLeast("6.1")) {
-      tg.setHeaderColor("#0d0d0d");
-      tg.setBackgroundColor("#0d0d0d");
+      // на время интро — чёрная шапка, после — белая (см. finishIntro)
+      tg.setHeaderColor("#000000");
+      tg.setBackgroundColor("#000000");
     }
   } catch (e) { /* старые клиенты */ }
 }
 
 const state = {
-  tab: "catalog",        // catalog | feedback | tryon
+  tab: "catalog",        // catalog | feedback
   view: "brands",        // brands | gallery | order  (внутри каталога)
   brand: null,           // id выбранной марки
   wheelId: null,         // id выбранных дисков (на экране заказа)
@@ -43,10 +44,8 @@ function render() {
     if (state.view === "brands") renderBrands();
     else if (state.view === "gallery") renderGallery();
     else renderOrder();
-  } else if (state.tab === "feedback") {
-    renderFeedback();
   } else {
-    renderTryon();
+    renderFeedback();
   }
 
   document.querySelectorAll(".tab").forEach((t) =>
@@ -130,18 +129,6 @@ function renderFeedback() {
     <button class="btn btn-accent btn-block" data-action="submit-feedback">Отправить заявку</button>`;
 }
 
-function renderTryon() {
-  screen.innerHTML = `
-    <div class="h1">ИИ-примерка дисков</div>
-    <div class="sub">Раздел в разработке</div>
-    <div class="stub">
-      <span class="s-ico">🔧</span>
-      <div class="h1" style="margin-bottom:0">Скоро</div>
-      <p>Здесь можно будет загрузить фото своей машины — и ИИ покажет, как она будет выглядеть с новыми дисками.</p>
-      <p>Следите за обновлениями 🏁</p>
-    </div>`;
-}
-
 // ── Отправка данных боту ─────────────────────
 
 function sendToBot(payload) {
@@ -151,7 +138,7 @@ function sendToBot(payload) {
       tg.sendData(json); // работает при запуске через кнопку клавиатуры; закрывает Mini App
       return true;
     } catch (e) {
-      tg.showAlert("Не удалось отправить. Откройте магазин через кнопку «🔧 Открыть магазин» в чате бота.");
+      tg.showAlert("Не удалось отправить. Откройте магазин через кнопку «🏁 Открыть магазин» в чате бота.");
       return false;
     }
   }
@@ -159,11 +146,17 @@ function sendToBot(payload) {
   return false;
 }
 
+function validPhone(phone) {
+  const digits = phone.replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 15;
+}
+
 function submitOrder() {
   syncOrderInputs();
-  if (!state.form.phone.trim()) {
-    if (tg) tg.showAlert("Укажите телефон — менеджер подтвердит заказ, размер и цену.");
-    else alert("Укажите телефон");
+  const phone = state.form.phone.trim();
+  if (!validPhone(phone)) {
+    if (tg) tg.showAlert("Укажите корректный телефон — менеджер подтвердит заказ, размер и цену.");
+    else alert("Укажите корректный телефон");
     return;
   }
   haptic("medium");
@@ -171,25 +164,26 @@ function submitOrder() {
   sendToBot({
     type: "order",
     item: w.name,
-    phone: state.form.phone.trim(),
-    comment: state.form.comment.trim(),
+    phone,
+    comment: state.form.comment.trim().slice(0, 500),
   });
 }
 
 function submitFeedback() {
   syncFeedbackInputs();
-  if (!state.fb.phone.trim()) {
-    if (tg) tg.showAlert("Укажите телефон для обратного звонка.");
-    else alert("Укажите телефон");
+  const phone = state.fb.phone.trim();
+  if (!validPhone(phone)) {
+    if (tg) tg.showAlert("Укажите корректный телефон для обратного звонка.");
+    else alert("Укажите корректный телефон");
     return;
   }
   haptic("medium");
   sendToBot({
     type: "feedback",
     topic: state.fb.topic,
-    phone: state.fb.phone.trim(),
-    city: state.fb.city.trim(),
-    message: state.fb.message.trim(),
+    phone,
+    city: state.fb.city.trim().slice(0, 64),
+    message: state.fb.message.trim().slice(0, 800),
   });
 }
 
@@ -261,3 +255,195 @@ document.querySelector(".tabbar").addEventListener("click", (e) => {
 });
 
 render();
+
+// ─────────────────────────────────────────────
+// Интро: взрыв белых частиц, собирающихся в «LS CUSTOMS»
+// Таймлайн: тьма → взрыв → вихрь → сборка текста → затухание
+// ─────────────────────────────────────────────
+
+function startIntro() {
+  const overlay = document.getElementById("intro");
+  const canvas = document.getElementById("intro-canvas");
+  if (!overlay || !canvas) return;
+
+  const reduceMotion = window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduceMotion) { finishIntro(overlay, true); return; }
+
+  const ctx = canvas.getContext("2d");
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const W = window.innerWidth, H = window.innerHeight;
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  ctx.scale(DPR, DPR);
+
+  const CX = W / 2, CY = H / 2;
+
+  // Точки-цели: растрируем текст на скрытом канвасе
+  function textTargets() {
+    const off = document.createElement("canvas");
+    off.width = W; off.height = H;
+    const octx = off.getContext("2d");
+    const size = Math.min(W * 0.16, 64);
+    octx.fillStyle = "#fff";
+    octx.textAlign = "center";
+    octx.textBaseline = "middle";
+    octx.font = `700 ${size}px "JetBrains Mono", monospace`;
+    octx.fillText("LS CUSTOMS", CX, CY - size * 0.45);
+    octx.font = `500 ${size * 0.5}px "JetBrains Mono", monospace`;
+    octx.fillText("S H O P", CX, CY + size * 0.55);
+
+    const data = octx.getImageData(0, 0, W, H).data;
+    const pts = [];
+    const step = 2;
+    for (let y = 0; y < H; y += step) {
+      for (let x = 0; x < W; x += step) {
+        if (data[(y * W + x) * 4 + 3] > 128) pts.push({ x, y });
+      }
+    }
+    // прореживаем до ~2200 точек, чтобы держать 60 FPS на слабых телефонах
+    const MAX = 2200;
+    if (pts.length > MAX) {
+      const ratio = pts.length / MAX;
+      return pts.filter((_, i) => i % Math.ceil(ratio) === 0);
+    }
+    return pts;
+  }
+
+  const targets = textTargets();
+  if (!targets.length) { finishIntro(overlay, true); return; }
+
+  const parts = targets.map((t) => {
+    const ang = Math.random() * Math.PI * 2;
+    const speed = 3 + Math.random() * 12;
+    return {
+      x: CX, y: CY,
+      vx: Math.cos(ang) * speed,
+      vy: Math.sin(ang) * speed,
+      tx: t.x, ty: t.y,
+      r: 0.5 + Math.random() * 1.1,
+      glow: 0.35 + Math.random() * 0.65,
+    };
+  });
+
+  // «Космическая пыль» — частицы, которые не войдут в текст и растворятся
+  const dust = Array.from({ length: 220 }, () => {
+    const ang = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 14;
+    return {
+      x: CX, y: CY,
+      vx: Math.cos(ang) * speed,
+      vy: Math.sin(ang) * speed,
+      r: 0.4 + Math.random() * 0.9,
+      life: 0.5 + Math.random() * 0.5,
+    };
+  });
+
+  // Таймлайн (секунды)
+  const T_DARK = 0.7, T_BOOM = 1.5, T_SWIRL = 3.2, T_FORM = 5.2, T_HOLD = 6.4;
+
+  let start = null;
+  let done = false;
+
+  function frame(now) {
+    if (done) return;
+    if (start === null) start = now;
+    const t = (now - start) / 1000;
+
+    // лёгкий шлейф вместо полной очистки — эффект motion blur
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
+    ctx.fillRect(0, 0, W, H);
+
+    if (t < T_DARK) { requestAnimationFrame(frame); return; }
+
+    ctx.globalCompositeOperation = "lighter";
+
+    if (t < T_BOOM) {
+      // фаза взрыва: разлёт с лёгким торможением
+      for (const p of parts) {
+        p.x += p.vx; p.y += p.vy;
+        p.vx *= 0.985; p.vy *= 0.985;
+        draw(p, p.glow);
+      }
+    } else if (t < T_SWIRL) {
+      // фаза вихря: тангенциальная сила вокруг центра + притяжение
+      for (const p of parts) {
+        const dx = CX - p.x, dy = CY - p.y;
+        const d = Math.max(Math.hypot(dx, dy), 1);
+        p.vx += (dx / d) * 0.10 + (-dy / d) * 0.22;
+        p.vy += (dy / d) * 0.10 + (dx / d) * 0.22;
+        p.vx *= 0.975; p.vy *= 0.975;
+        p.x += p.vx; p.y += p.vy;
+        draw(p, p.glow);
+      }
+    } else if (t < T_FORM) {
+      // фаза сборки: пружина к целевой точке буквы
+      const k = Math.min((t - T_SWIRL) / (T_FORM - T_SWIRL), 1);
+      const spring = 0.012 + k * 0.14;
+      for (const p of parts) {
+        p.vx += (p.tx - p.x) * spring;
+        p.vy += (p.ty - p.y) * spring;
+        p.vx *= 0.82; p.vy *= 0.82;
+        p.x += p.vx; p.y += p.vy;
+        draw(p, p.glow + k * 0.5);
+      }
+    } else {
+      // фаза удержания: текст собран, лёгкое мерцание по краям
+      for (const p of parts) {
+        p.x += (p.tx - p.x) * 0.3;
+        p.y += (p.ty - p.y) * 0.3;
+        draw(p, 0.9 + Math.sin(t * 6 + p.tx) * 0.1);
+      }
+    }
+
+    // пыль живёт во всех фазах после взрыва
+    for (const d of dust) {
+      if (d.life <= 0) continue;
+      d.x += d.vx; d.y += d.vy;
+      d.vx *= 0.99; d.vy *= 0.99;
+      if (t > T_SWIRL) d.life -= 0.006;
+      ctx.globalAlpha = Math.max(d.life * 0.5, 0);
+      ctx.fillRect(d.x, d.y, d.r, d.r);
+    }
+    ctx.globalAlpha = 1;
+
+    if (t >= T_HOLD) { finishIntro(overlay); done = true; return; }
+    requestAnimationFrame(frame);
+  }
+
+  function draw(p, alpha) {
+    ctx.globalAlpha = Math.min(Math.max(alpha, 0), 1);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(p.x, p.y, p.r, p.r);
+    ctx.globalAlpha = 1;
+  }
+
+  overlay.addEventListener("click", () => {
+    if (!done) { done = true; finishIntro(overlay); }
+  }, { once: true });
+
+  requestAnimationFrame(frame);
+}
+
+// Ждём загрузку шрифта (не дольше 600 мс), чтобы буквы растрировались правильно
+if (document.fonts && document.fonts.load) {
+  Promise.race([
+    document.fonts.load('700 64px "JetBrains Mono"'),
+    new Promise((r) => setTimeout(r, 600)),
+  ]).then(startIntro, startIntro);
+} else {
+  startIntro();
+}
+
+function finishIntro(overlay, instant) {
+  try {
+    if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast("6.1")) {
+      tg.setHeaderColor("#ffffff");
+      tg.setBackgroundColor("#ffffff");
+    }
+  } catch (e) { /* старые клиенты */ }
+  if (instant) { overlay.remove(); return; }
+  overlay.classList.add("fade");
+  setTimeout(() => overlay.remove(), 950);
+}
