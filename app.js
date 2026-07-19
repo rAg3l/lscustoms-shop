@@ -262,7 +262,7 @@ render();
 // Таймлайн: выезд → разгон → разборка → вихрь-сборка → чёткий логотип
 // ─────────────────────────────────────────────
 
-function startIntro() {
+function startIntroLegacy() {
   const overlay = document.getElementById("intro");
   const canvas = document.getElementById("intro-canvas");
   if (!overlay || !canvas) return;
@@ -797,6 +797,212 @@ function startIntro() {
 
   overlay.addEventListener("click", () => {
     if (!done) { done = true; finishIntro(overlay); }
+  }, { once: true });
+
+  requestAnimationFrame(frame);
+}
+
+// ─────────────────────────────────────────────
+// Интро: чисто белая пространственная волна частиц собирается
+// в LS CUSTOMS / SHOP. Все массивы создаются один раз; в кадре нет аллокаций.
+// ─────────────────────────────────────────────
+
+function startIntro() {
+  const overlay = document.getElementById("intro");
+  const canvas = document.getElementById("intro-canvas");
+  if (!overlay || !canvas) return;
+
+  const reduced = window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduced) { finishIntro(overlay, true); return; }
+
+  const W = Math.max(window.innerWidth || 0, 1);
+  const H = Math.max(window.innerHeight || 0, 1);
+  if (W <= 1 || H <= 1) {
+    if (!startIntro._retried) {
+      startIntro._retried = true;
+      setTimeout(startIntro, 250);
+    } else finishIntro(overlay, true);
+    return;
+  }
+
+  const ctx = canvas.getContext("2d", { alpha: false });
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width = `${W}px`;
+  canvas.style.height = `${H}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const cx = W * 0.5;
+  const cy = H * 0.5;
+  const TAU = Math.PI * 2;
+  const portrait = H > W;
+  const count = Math.min(6200, Math.max(3600, Math.round(W * H / 85)));
+
+  // Финальный логотип: максимально крупный, но с безопасными полями.
+  const fontProbe = document.createElement("canvas").getContext("2d");
+  fontProbe.font = '700 100px "JetBrains Mono", monospace';
+  const measured = fontProbe.measureText("LS CUSTOMS").width || 610;
+  const titleSize = Math.min(158, Math.max(42, (W * 0.9 / measured) * 100));
+  const shopSize = titleSize * 0.46;
+  const titleY = cy - titleSize * 0.38;
+  const shopY = cy + titleSize * 0.58;
+
+  function paintLogo(targetCtx, alpha) {
+    targetCtx.save();
+    targetCtx.globalAlpha = alpha;
+    targetCtx.fillStyle = "#ffffff";
+    targetCtx.textAlign = "center";
+    targetCtx.textBaseline = "middle";
+    targetCtx.font = `700 ${titleSize}px "JetBrains Mono", monospace`;
+    targetCtx.fillText("LS CUSTOMS", cx, titleY);
+    targetCtx.font = `500 ${shopSize}px "JetBrains Mono", monospace`;
+    targetCtx.fillText("S H O P", cx, shopY);
+    targetCtx.restore();
+  }
+
+  // Растр логотипа используется как карта целей частиц.
+  const mask = document.createElement("canvas");
+  mask.width = W;
+  mask.height = H;
+  const maskCtx = mask.getContext("2d", { willReadFrequently: true });
+  paintLogo(maskCtx, 1);
+  const pixels = maskCtx.getImageData(0, 0, W, H).data;
+  const candidatesX = [];
+  const candidatesY = [];
+  const sampleStep = W < 520 ? 2 : 3;
+  for (let y = 0; y < H; y += sampleStep) {
+    for (let x = 0; x < W; x += sampleStep) {
+      if (pixels[(y * W + x) * 4 + 3] > 96) {
+        candidatesX.push(x);
+        candidatesY.push(y);
+      }
+    }
+  }
+  if (!candidatesX.length) { finishIntro(overlay, true); return; }
+
+  const tx = new Float32Array(count);
+  const ty = new Float32Array(count);
+  const seed = new Float32Array(count);
+  const phase = new Float32Array(count);
+  const depth = new Float32Array(count);
+  const size = new Float32Array(count);
+  const gatherX = new Float32Array(count);
+  const gatherY = new Float32Array(count);
+
+  // Детерминированный хэш: одинаковая красивая композиция при каждом запуске.
+  function hash(n) {
+    const v = Math.sin(n * 127.1 + 311.7) * 43758.5453123;
+    return v - Math.floor(v);
+  }
+
+  function wavePoint(index, time, out) {
+    const u = seed[index];
+    const z = depth[index];
+    const ph = phase[index];
+    const travel = Math.min(time / 3.9, 1);
+    const front = -W * 0.28 + travel * W * 1.56;
+    const ribbon = (u - 0.5) * W * 1.18;
+    const curl = Math.sin(u * TAU * 2.35 + time * 2.1 + ph) * W * (0.055 + z * 0.065);
+    const fold = Math.cos(u * TAU * 1.15 - time * 1.35 + ph * 0.4) * W * 0.045;
+    out[0] = front + ribbon * 0.38 + curl + fold;
+    const crest = Math.sin(u * TAU * 2.05 - time * 2.45 + ph) * H * (0.11 + z * 0.08);
+    const filament = Math.sin(u * TAU * 7.0 + ph * 1.7 + time * 3.0) * H * 0.025;
+    out[1] = cy + crest + filament + (z - 0.5) * H * 0.22;
+  }
+
+  const point = new Float32Array(2);
+  for (let i = 0; i < count; i++) {
+    seed[i] = hash(i + 1);
+    phase[i] = hash(i + 913) * TAU;
+    depth[i] = hash(i + 2027);
+    size[i] = 0.55 + depth[i] * 1.35;
+    const ci = Math.floor(hash(i + 4019) * candidatesX.length);
+    tx[i] = candidatesX[ci] + (hash(i + 5999) - 0.5) * 1.4;
+    ty[i] = candidatesY[ci] + (hash(i + 7013) - 0.5) * 1.4;
+    wavePoint(i, 3.9, point);
+    gatherX[i] = point[0];
+    gatherY[i] = point[1];
+  }
+
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#000000");
+  bg.addColorStop(0.62, "#050505");
+  bg.addColorStop(1, "#0a0a0a");
+
+  const T_WAVE = 3.9;
+  const T_FORM = 7.8;
+  const T_SOLID = 8.8;
+  const T_END = 9.8;
+  let started = -1;
+  let done = false;
+
+  function smoothstep(v) {
+    const x = Math.max(0, Math.min(1, v));
+    return x * x * (3 - 2 * x);
+  }
+
+  function frame(now) {
+    if (done) return;
+    if (started < 0) started = now;
+    const t = Math.min((now - started) / 1000, T_END);
+
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = "#ffffff";
+
+    let form = 0;
+    if (t > T_WAVE) form = smoothstep((t - T_WAVE) / (T_FORM - T_WAVE));
+    const turbulence = (1 - form) * (1 - form);
+    const orbit = Math.sin(form * Math.PI) * Math.min(W, H) * 0.12;
+
+    for (let i = 0; i < count; i++) {
+      let x;
+      let y;
+      if (t <= T_WAVE) {
+        wavePoint(i, t, point);
+        x = point[0];
+        y = point[1];
+      } else {
+        const inv = 1 - form;
+        const a = phase[i] + form * TAU * (1.05 + depth[i] * 0.6);
+        const bow = Math.sin(form * Math.PI) * (depth[i] - 0.5) * H * 0.34;
+        x = gatherX[i] * inv + tx[i] * form + Math.cos(a) * orbit * inv;
+        y = gatherY[i] * inv + ty[i] * form + Math.sin(a) * orbit * inv + bow * turbulence;
+      }
+
+      const edgeFade = Math.min(1, Math.max(0, (x + 30) / 80)) *
+        Math.min(1, Math.max(0, (W + 30 - x) / 80));
+      const shimmer = 0.34 + 0.66 * Math.abs(Math.sin(phase[i] + t * (2.0 + depth[i])));
+      ctx.globalAlpha = Math.min(1, edgeFade * (0.38 + depth[i] * 0.62) * shimmer + form * 0.34);
+      const r = size[i] + form * 0.45;
+      ctx.fillRect(x, y, r, r);
+    }
+
+    // В конце точки не просто останавливаются: они сплавляются в цельный белый знак.
+    if (t >= T_FORM) {
+      const solid = smoothstep((t - T_FORM) / (T_SOLID - T_FORM));
+      ctx.globalCompositeOperation = "source-over";
+      paintLogo(ctx, solid);
+    }
+
+    if (t >= T_END) {
+      done = true;
+      finishIntro(overlay);
+      return;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  overlay.addEventListener("click", () => {
+    if (!done) {
+      done = true;
+      finishIntro(overlay);
+    }
   }, { once: true });
 
   requestAnimationFrame(frame);
