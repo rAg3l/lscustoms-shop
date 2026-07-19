@@ -1014,7 +1014,7 @@ function startIntroWaveLegacy() {
 // без отдельного текстового слоя, цветных акцентов и старых сцен.
 // ─────────────────────────────────────────────
 
-function startIntro() {
+function startIntroV7Legacy() {
   const overlay = document.getElementById("intro");
   const canvas = document.getElementById("intro-canvas");
   if (!overlay || !canvas) return;
@@ -1266,15 +1266,7 @@ function startIntro() {
   requestAnimationFrame(frame);
 }
 
-// Ждём загрузку шрифта (не дольше 600 мс), чтобы буквы растрировались правильно
-if (document.fonts && document.fonts.load) {
-  Promise.race([
-    document.fonts.load('700 64px "JetBrains Mono"'),
-    new Promise((r) => setTimeout(r, 600)),
-  ]).then(startIntro, startIntro);
-} else {
-  startIntro();
-}
+// Интро v8 запускается отдельным модулем intro.js после загрузки app.js.
 
 function finishIntro(overlay, instant) {
   try {
