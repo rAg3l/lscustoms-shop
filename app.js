@@ -279,19 +279,39 @@ function startIntro() {
 
   const CX = W / 2, CY = H / 2;
 
+  // Размер шрифта подбираем так, чтобы «LS CUSTOMS» заняла 88% ширины экрана
+  function fitLayout() {
+    const probe = document.createElement("canvas").getContext("2d");
+    probe.font = '700 100px "JetBrains Mono", monospace';
+    const w100 = probe.measureText("LS CUSTOMS").width || 600;
+    const size = Math.min((W * 0.88 / w100) * 100, 150);
+    return {
+      size,
+      line1: { text: "LS CUSTOMS", font: `700 ${size}px "JetBrains Mono", monospace`, y: CY - size * 0.5 },
+      line2: { text: "S H O P",    font: `500 ${size * 0.52}px "JetBrains Mono", monospace`, y: CY + size * 0.62 },
+    };
+  }
+
+  const layout = fitLayout();
+
+  function drawSolidText(c, alpha) {
+    c.globalAlpha = alpha;
+    c.fillStyle = "#fff";
+    c.textAlign = "center";
+    c.textBaseline = "middle";
+    c.font = layout.line1.font;
+    c.fillText(layout.line1.text, CX, layout.line1.y);
+    c.font = layout.line2.font;
+    c.fillText(layout.line2.text, CX, layout.line2.y);
+    c.globalAlpha = 1;
+  }
+
   // Точки-цели: растрируем текст на скрытом канвасе
   function textTargets() {
     const off = document.createElement("canvas");
     off.width = W; off.height = H;
     const octx = off.getContext("2d");
-    const size = Math.min(W * 0.16, 64);
-    octx.fillStyle = "#fff";
-    octx.textAlign = "center";
-    octx.textBaseline = "middle";
-    octx.font = `700 ${size}px "JetBrains Mono", monospace`;
-    octx.fillText("LS CUSTOMS", CX, CY - size * 0.45);
-    octx.font = `500 ${size * 0.5}px "JetBrains Mono", monospace`;
-    octx.fillText("S H O P", CX, CY + size * 0.55);
+    drawSolidText(octx, 1);
 
     const data = octx.getImageData(0, 0, W, H).data;
     const pts = [];
@@ -301,8 +321,8 @@ function startIntro() {
         if (data[(y * W + x) * 4 + 3] > 128) pts.push({ x, y });
       }
     }
-    // прореживаем до ~2200 точек, чтобы держать 60 FPS на слабых телефонах
-    const MAX = 2200;
+    // прореживаем до ~2600 точек, чтобы держать 60 FPS на слабых телефонах
+    const MAX = 2600;
     if (pts.length > MAX) {
       const ratio = pts.length / MAX;
       return pts.filter((_, i) => i % Math.ceil(ratio) === 0);
@@ -339,8 +359,8 @@ function startIntro() {
     };
   });
 
-  // Таймлайн (секунды)
-  const T_DARK = 0.7, T_BOOM = 1.5, T_SWIRL = 3.2, T_FORM = 5.2, T_HOLD = 6.4;
+  // Таймлайн (секунды): тьма → взрыв → вихрь → долгая сборка → сплавление в сплошной текст → удержание
+  const T_DARK = 0.6, T_BOOM = 1.4, T_SWIRL = 3.0, T_FORM = 6.4, T_SOLID = 8.0, T_HOLD = 9.2;
 
   let start = null;
   let done = false;
@@ -378,23 +398,35 @@ function startIntro() {
         draw(p, p.glow);
       }
     } else if (t < T_FORM) {
-      // фаза сборки: пружина к целевой точке буквы
+      // фаза сборки (долгая): мягкая пружина к целевой точке буквы,
+      // частицы подлетают волнами — буквы проступают постепенно
       const k = Math.min((t - T_SWIRL) / (T_FORM - T_SWIRL), 1);
-      const spring = 0.012 + k * 0.14;
+      const ease = k * k * (3 - 2 * k); // smoothstep — медленный старт и финиш
+      const spring = 0.008 + ease * 0.10;
+      const damp = 0.90 - ease * 0.08;
       for (const p of parts) {
         p.vx += (p.tx - p.x) * spring;
         p.vy += (p.ty - p.y) * spring;
-        p.vx *= 0.82; p.vy *= 0.82;
+        p.vx *= damp; p.vy *= damp;
         p.x += p.vx; p.y += p.vy;
-        draw(p, p.glow + k * 0.5);
+        draw(p, p.glow + ease * 0.5);
       }
-    } else {
-      // фаза удержания: текст собран, лёгкое мерцание по краям
+    } else if (t < T_SOLID) {
+      // фаза сплавления: частицы дожимаются к буквам, а поверх
+      // проступает идеально чёткий сплошной белый текст
+      const k = Math.min((t - T_FORM) / (T_SOLID - T_FORM), 1);
       for (const p of parts) {
-        p.x += (p.tx - p.x) * 0.3;
-        p.y += (p.ty - p.y) * 0.3;
-        draw(p, 0.9 + Math.sin(t * 6 + p.tx) * 0.1);
+        p.x += (p.tx - p.x) * 0.25;
+        p.y += (p.ty - p.y) * 0.25;
+        draw(p, (1 - k) * 0.9 + 0.1);
       }
+      ctx.globalCompositeOperation = "source-over";
+      drawSolidText(ctx, k);
+    } else {
+      // фаза удержания: сплошной чёткий текст, вокруг — остатки пыли
+      ctx.globalCompositeOperation = "source-over";
+      drawSolidText(ctx, 1);
+      ctx.globalCompositeOperation = "lighter";
     }
 
     // пыль живёт во всех фазах после взрыва
@@ -439,11 +471,11 @@ if (document.fonts && document.fonts.load) {
 function finishIntro(overlay, instant) {
   try {
     if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast("6.1")) {
-      tg.setHeaderColor("#ffffff");
-      tg.setBackgroundColor("#ffffff");
+      tg.setHeaderColor("#120c07");
+      tg.setBackgroundColor("#120c07");
     }
   } catch (e) { /* старые клиенты */ }
   if (instant) { overlay.remove(); return; }
   overlay.classList.add("fade");
-  setTimeout(() => overlay.remove(), 950);
+  setTimeout(() => overlay.remove(), 1150);
 }
