@@ -807,7 +807,7 @@ function startIntroLegacy() {
 // в LS CUSTOMS / SHOP. Все массивы создаются один раз; в кадре нет аллокаций.
 // ─────────────────────────────────────────────
 
-function startIntro() {
+function startIntroWaveLegacy() {
   const overlay = document.getElementById("intro");
   const canvas = document.getElementById("intro-canvas");
   if (!overlay || !canvas) return;
@@ -1001,6 +1001,264 @@ function startIntro() {
   overlay.addEventListener("click", () => {
     if (!done) {
       done = true;
+      finishIntro(overlay);
+    }
+  }, { once: true });
+
+  requestAnimationFrame(frame);
+}
+
+// ─────────────────────────────────────────────
+// Интро v7: 24 000 белых частиц в WebGL.
+// Объёмная ударная волна схлопывается непосредственно в логотип —
+// без отдельного текстового слоя, цветных акцентов и старых сцен.
+// ─────────────────────────────────────────────
+
+function startIntro() {
+  const overlay = document.getElementById("intro");
+  const canvas = document.getElementById("intro-canvas");
+  if (!overlay || !canvas) return;
+
+  const reduced = window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduced) { finishIntro(overlay, true); return; }
+
+  const W = Math.max(window.innerWidth || 0, 1);
+  const H = Math.max(window.innerHeight || 0, 1);
+  if (W <= 1 || H <= 1) {
+    if (!startIntro._retried) {
+      startIntro._retried = true;
+      setTimeout(startIntro, 250);
+    } else finishIntro(overlay, true);
+    return;
+  }
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width = `${W}px`;
+  canvas.style.height = `${H}px`;
+
+  const gl = canvas.getContext("webgl", {
+    alpha: false,
+    antialias: false,
+    depth: false,
+    stencil: false,
+    powerPreference: "high-performance",
+    preserveDrawingBuffer: false,
+  });
+  if (!gl) { finishIntro(overlay, true); return; }
+
+  const vertexSource = `
+    precision highp float;
+    attribute vec4 aSeed;
+    attribute vec2 aTarget;
+    uniform float uTime;
+    uniform float uAspect;
+    uniform float uDpr;
+    varying float vAlpha;
+    varying float vCore;
+
+    float ease(float x) {
+      x = clamp(x, 0.0, 1.0);
+      return x * x * (3.0 - 2.0 * x);
+    }
+
+    vec3 wave(float t) {
+      float u = aSeed.x;
+      float lane = aSeed.y - 0.5;
+      float z = aSeed.z - 0.5;
+      float p = aSeed.w * 6.2831853;
+      float reveal = ease((t - 0.45) / 1.15);
+      float travel = ease((t - 0.35) / 3.65);
+      float front = mix(-2.25, 1.72, travel);
+
+      float ribbon = (u - 0.5) * 3.1;
+      float fold = sin(u * 18.0 - t * 3.4 + p) * (0.18 + aSeed.z * 0.22);
+      float micro = sin(u * 71.0 + p * 2.0 + t * 5.2) * 0.032;
+      float x = front + ribbon * 0.62 + fold * 0.34;
+      float y = sin(u * 12.8 - t * 2.7 + p * 0.23) * (0.46 + aSeed.z * 0.18);
+      y += sin(u * 29.0 + t * 3.3 + p) * 0.10 + lane * 0.54 + micro;
+      float depth = cos(u * 10.4 - t * 2.1 + p * 0.4) * 0.72 + z * 1.15;
+
+      // Перспектива: ближние нити становятся быстрее, крупнее и ярче.
+      float perspective = 1.0 / max(0.58, 1.35 - depth * 0.28);
+      return vec3(x * perspective / uAspect, y * perspective, depth * reveal);
+    }
+
+    void main() {
+      float t = uTime;
+      vec3 wp = wave(min(t, 4.25));
+      float gather = ease((t - 4.10) / 4.05);
+      float inv = 1.0 - gather;
+      float spiral = sin(gather * 3.1415926) * inv;
+      float angle = aSeed.w * 6.2831853 + gather * (7.0 + aSeed.z * 5.0);
+      vec2 vortex = vec2(cos(angle), sin(angle)) * spiral * (0.22 + aSeed.y * 0.38);
+      vec2 target = aTarget;
+      vec2 pos = mix(wp.xy, target, gather) + vortex;
+
+      // Быстрый фронт волны слегка дёргает пространство перед имплозией.
+      float shock = exp(-pow((t - 3.55) * 2.4, 2.0));
+      pos += normalize(pos + vec2(0.0001)) * shock * 0.10 * (0.3 + aSeed.z);
+      gl_Position = vec4(pos, mix(wp.z * 0.04, 0.0, gather), 1.0);
+
+      float entrance = ease((t - 0.38 - aSeed.w * 0.42) / 0.72);
+      float pulse = 0.68 + 0.32 * sin(t * 3.0 + aSeed.w * 19.0);
+      float settle = ease((t - 7.15) / 1.0);
+      float depthSize = 1.0 + max(wp.z, 0.0) * 1.3;
+      gl_PointSize = (1.15 + aSeed.z * 1.75 + settle * 0.85) * uDpr * depthSize;
+      vAlpha = entrance * mix((0.22 + aSeed.z * 0.68) * pulse, 0.92, gather);
+      vCore = mix(0.25 + aSeed.z * 0.55, 1.0, settle);
+    }
+  `;
+
+  const fragmentSource = `
+    precision mediump float;
+    varying float vAlpha;
+    varying float vCore;
+    void main() {
+      vec2 p = gl_PointCoord - 0.5;
+      float d = length(p) * 2.0;
+      float core = 1.0 - smoothstep(0.08, 0.48, d);
+      float halo = 1.0 - smoothstep(0.12, 1.0, d);
+      float a = (core * mix(0.72, 1.0, vCore) + halo * 0.30) * vAlpha;
+      if (a < 0.015) discard;
+      gl_FragColor = vec4(1.0, 1.0, 1.0, a);
+    }
+  `;
+
+  function shader(type, source) {
+    const item = gl.createShader(type);
+    gl.shaderSource(item, source);
+    gl.compileShader(item);
+    if (!gl.getShaderParameter(item, gl.COMPILE_STATUS)) {
+      gl.deleteShader(item);
+      return null;
+    }
+    return item;
+  }
+
+  const vs = shader(gl.VERTEX_SHADER, vertexSource);
+  const fs = shader(gl.FRAGMENT_SHADER, fragmentSource);
+  if (!vs || !fs) { finishIntro(overlay, true); return; }
+  const program = gl.createProgram();
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.linkProgram(program);
+  gl.deleteShader(vs);
+  gl.deleteShader(fs);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    gl.deleteProgram(program);
+    finishIntro(overlay, true);
+    return;
+  }
+
+  // Растрируем только геометрию букв. На экран этот canvas не выводится.
+  const mask = document.createElement("canvas");
+  mask.width = W;
+  mask.height = H;
+  const mc = mask.getContext("2d", { willReadFrequently: true });
+  const probe = document.createElement("canvas").getContext("2d");
+  probe.font = '800 100px "JetBrains Mono", monospace';
+  const measured = probe.measureText("LS CUSTOMS").width || 610;
+  const titleSize = Math.min(164, Math.max(44, (W * 0.91 / measured) * 100));
+  const shopSize = titleSize * 0.48;
+  const cx = W * 0.5;
+  const cy = H * 0.5;
+  mc.fillStyle = "#fff";
+  mc.textAlign = "center";
+  mc.textBaseline = "middle";
+  mc.font = `800 ${titleSize}px "JetBrains Mono", monospace`;
+  mc.fillText("LS CUSTOMS", cx, cy - titleSize * 0.37);
+  mc.font = `700 ${shopSize}px "JetBrains Mono", monospace`;
+  mc.fillText("S H O P", cx, cy + titleSize * 0.57);
+
+  const bitmap = mc.getImageData(0, 0, W, H).data;
+  const px = [];
+  const py = [];
+  const step = W < 560 ? 1 : 2;
+  for (let y = 0; y < H; y += step) {
+    for (let x = 0; x < W; x += step) {
+      if (bitmap[(y * W + x) * 4 + 3] > 48) {
+        px.push(x);
+        py.push(y);
+      }
+    }
+  }
+  if (!px.length) { gl.deleteProgram(program); finishIntro(overlay, true); return; }
+
+  const count = W * H < 310000 ? 22000 : 28000;
+  const seeds = new Float32Array(count * 4);
+  const targets = new Float32Array(count * 2);
+  function hash(n) {
+    const value = Math.sin(n * 127.1 + 311.7) * 43758.5453123;
+    return value - Math.floor(value);
+  }
+  for (let i = 0; i < count; i++) {
+    const s4 = i * 4;
+    seeds[s4] = hash(i + 1);
+    seeds[s4 + 1] = hash(i + 1009);
+    seeds[s4 + 2] = hash(i + 2027);
+    seeds[s4 + 3] = hash(i + 4093);
+    const pick = Math.floor(hash(i + 8011) * px.length);
+    const t2 = i * 2;
+    targets[t2] = (px[pick] / W) * 2 - 1 + (hash(i + 12007) - 0.5) * 0.0025;
+    targets[t2 + 1] = 1 - (py[pick] / H) * 2 + (hash(i + 16001) - 0.5) * 0.0025;
+  }
+
+  function attribute(name, size, data) {
+    const loc = gl.getAttribLocation(program, name);
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0);
+    return buffer;
+  }
+
+  gl.useProgram(program);
+  const seedBuffer = attribute("aSeed", 4, seeds);
+  const targetBuffer = attribute("aTarget", 2, targets);
+  const timeLoc = gl.getUniformLocation(program, "uTime");
+  const aspectLoc = gl.getUniformLocation(program, "uAspect");
+  const dprLoc = gl.getUniformLocation(program, "uDpr");
+  gl.uniform1f(aspectLoc, W / H);
+  gl.uniform1f(dprLoc, dpr);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(0, 0, 0, 1);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+
+  let start = -1;
+  let done = false;
+  const END = 9.65;
+
+  function dispose() {
+    gl.deleteBuffer(seedBuffer);
+    gl.deleteBuffer(targetBuffer);
+    gl.deleteProgram(program);
+  }
+
+  function frame(now) {
+    if (done) return;
+    if (start < 0) start = now;
+    const t = Math.min((now - start) / 1000, END);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform1f(timeLoc, t);
+    gl.drawArrays(gl.POINTS, 0, count);
+    if (t >= END) {
+      done = true;
+      dispose();
+      finishIntro(overlay);
+      return;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  overlay.addEventListener("click", () => {
+    if (!done) {
+      done = true;
+      dispose();
       finishIntro(overlay);
     }
   }, { once: true });
