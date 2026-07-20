@@ -255,5 +255,16 @@ body {
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10.5px; letter-spacing: 0.8px; text-transform: uppercase;
 }
-.tab-ico { font-size: 19px; }
-.tab.active { color: var(--accent); text-shadow: 0 0 18px rgba(255, 122, 26, 0.5); }
+.tab-ico {
+  font-size: 19px;
+  transition: filter 0.2s ease, transform 0.2s ease;
+}
+.tab.active {
+  color: #fff;
+  text-shadow: 0 0 14px rgba(255, 255, 255, 0.55);
+}
+.tab.active .tab-ico {
+  filter: grayscale(1) brightness(2.35)
+          drop-shadow(0 0 7px rgba(255, 255, 255, 0.8));
+  transform: translateY(-1px);
+}
