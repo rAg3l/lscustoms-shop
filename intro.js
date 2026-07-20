@@ -1,5 +1,5 @@
-// LS CUSTOMS — cinematic WebGL intro v8
-// Forged particle wheel -> camera dive -> particle tunnel -> brand lockup.
+// LS CUSTOMS — cinematic WebGL intro v11
+// Forged wheel -> fibre bundle -> arch wave -> iris -> brand lockup.
 (function () {
   "use strict";
 
@@ -96,50 +96,93 @@
       return p;
     }
 
-    vec3 tunnel(float t) {
-      float speed = max(t - 2.35, 0.0);
-      float z = fract(aSeed.z + aSeed.w * 0.19 - speed * (0.22 + aSeed.y * 0.035));
-      float nearZ = max(0.045, z);
-      float angle = aSeed.x * TAU + sin(aSeed.w * 18.0 + t) * 0.18;
-      float radius = 0.23 + aSeed.y * 0.50 + sin(aSeed.x * 31.0 + t * 1.7) * 0.045;
-      float perspective = 0.20 / nearZ;
-      vec2 p = vec2(cos(angle), sin(angle)) * radius * perspective;
+    vec3 strands(float t) {
+      float strandId = floor(aSeed.x * 26.0);
+      float along = fract(aSeed.x * 26.0);
+      float lane = strandId / 25.0 - 0.5;
+      float bend = sin(along * PI * 1.18 + t * 0.52 + aSeed.w * 0.7);
+      float curl = sin(along * TAU + aSeed.w * TAU + t * 0.9);
+      vec3 p;
+      p.x = lane * 1.04 + bend * (0.10 + aSeed.z * 0.08);
+      p.y = (along - 0.5) * 1.48 + lane * lane * 0.18;
+      p.z = curl * 0.34 + (aSeed.z - 0.5) * 0.24;
+      float tilt = -0.24 + sin(t * 0.35) * 0.08;
+      float ct = cos(tilt), st = sin(tilt);
+      p.xy = vec2(p.x * ct - p.y * st, p.x * st + p.y * ct);
+      p *= min(1.0, uAspect * 1.15);
       p.x /= uAspect;
-      return vec3(p, 1.0 - z);
+      return p;
+    }
+
+    vec3 arch(float t) {
+      float angle = mix(0.10 * PI, 0.90 * PI, aSeed.x);
+      float shell = 0.55 + (aSeed.y - 0.5) * 0.34;
+      float fibre = (aSeed.z - 0.5) * 0.26;
+      float ripple = sin(aSeed.x * 36.0 + t * 1.8 + aSeed.w * TAU) * 0.035;
+      float radius = shell + fibre + ripple;
+      vec3 p = vec3(cos(angle) * radius,
+                    sin(angle) * radius - 0.20 - aSeed.z * 0.06,
+                    (aSeed.z - 0.5) * 0.54 + sin(angle * 3.0 + t) * 0.08);
+      p *= min(1.0, uAspect * 1.18);
+      p.x /= uAspect;
+      return p;
+    }
+
+    vec3 iris(float t) {
+      float angle = aSeed.x * TAU + t * 0.11;
+      float layer = aSeed.y - 0.5;
+      float pulse = sin(t * 1.25 + aSeed.w * TAU) * 0.018;
+      float radius = 0.43 + layer * 0.31 + (aSeed.z - 0.5) * 0.17 + pulse;
+      float comb = sin(angle * 18.0 + aSeed.w * 4.0) * 0.028 * (0.3 + aSeed.z);
+      vec3 p = vec3(cos(angle) * (radius + comb),
+                    sin(angle) * (radius + comb),
+                    layer * 0.58 + sin(angle * 4.0 - t) * 0.08);
+      p *= min(1.0, uAspect * 1.16);
+      p.x /= uAspect;
+      return p;
     }
 
     void main() {
       float t = uTime;
-      vec3 rim = wheel(min(t, 3.2));
-      vec3 flight = tunnel(t);
+      vec3 rim = wheel(t);
+      vec3 bundle = strands(t);
+      vec3 wave = arch(t);
+      vec3 eye = iris(t);
 
-      float dive = ease((t - 2.35) / 1.55);
-      float burst = sin(dive * PI) * (0.18 + aSeed.z * 0.30);
-      vec2 burstDir = normalize(rim.xy + vec2(0.0001));
-      vec2 world = mix(rim.xy, flight.xy, dive) + burstDir * burst;
+      // Long overlapping morphs: no hard cuts and no particles are respawned.
+      float m1 = ease((t - 1.75) / 1.85);
+      float m2 = ease((t - 4.05) / 1.95);
+      float m3 = ease((t - 6.35) / 1.85);
+      float gather = ease((t - 8.55) / 2.65);
+      vec3 shape = mix(rim, bundle, m1);
+      shape = mix(shape, wave, m2);
+      shape = mix(shape, eye, m3);
 
-      float gather = ease((t - 5.55) / 3.05);
+      float flow1 = sin(m1 * PI) * (1.0 - m2);
+      float flow2 = sin(m2 * PI) * (1.0 - m3);
+      float flow3 = sin(m3 * PI) * (1.0 - gather);
+      float angle = aSeed.w * TAU + t * 0.48;
+      vec2 flow = vec2(cos(angle), sin(angle)) *
+        (flow1 * 0.065 + flow2 * 0.085 + flow3 * 0.055) * (0.4 + aSeed.z);
+      vec2 world = shape.xy + flow;
+
       float inv = 1.0 - gather;
-      float angle = aSeed.w * TAU + gather * (8.0 + aSeed.z * 5.0);
-      float helix = sin(gather * PI) * inv * (0.17 + aSeed.y * 0.36);
-      vec2 vortex = vec2(cos(angle), sin(angle)) * helix;
-      world = mix(world, aTarget, gather) + vortex;
-
-      // A compression shock makes the final lockup feel physical.
-      float compression = exp(-pow((t - 5.48) * 3.4, 2.0));
-      world += normalize(world + vec2(0.0001)) * compression * 0.075 * (0.4 + aSeed.z);
+      float helixAngle = aSeed.w * TAU + gather * (5.5 + aSeed.z * 4.0);
+      float helix = sin(gather * PI) * inv * (0.09 + aSeed.y * 0.19);
+      world = mix(world, aTarget, gather) + vec2(cos(helixAngle), sin(helixAngle)) * helix;
       gl_Position = vec4(world, 0.0, 1.0);
 
       float reveal = ease((t - 0.18 - aSeed.w * 0.65) / 1.15);
-      float wheelPulse = 0.58 + 0.42 * sin(t * 2.4 + aSeed.w * 21.0);
-      float tunnelBoost = mix(1.0, 1.5 + flight.z * 1.7, dive * inv);
-      float finalDensity = ease((t - 7.65) / 0.75);
-      float scan = exp(-pow((aTarget.x - (t - 8.15) * 1.35 + 1.2) * 8.0, 2.0));
+      float breathe = 0.64 + 0.36 * sin(t * 1.7 + aSeed.w * 18.0);
+      float transitionGlow = max(max(sin(m1 * PI), sin(m2 * PI)), sin(m3 * PI));
+      float finalDensity = ease((t - 10.35) / 0.70);
+      float fusion = ease((t - 10.95) / 0.85);
+      float scan = exp(-pow((aTarget.x - (t - 10.72) * 1.25 + 1.2) * 8.0, 2.0));
       gl_PointSize = (1.05 + aSeed.z * 1.65 + finalDensity * 0.80 + scan * 1.45) *
-        uDpr * tunnelBoost;
-      vAlpha = reveal * mix((0.28 + aSeed.z * 0.64) * wheelPulse,
-                            0.90 + scan * 0.10, gather);
-      vEnergy = max(max(dive * flight.z, compression), scan);
+        uDpr * (1.0 + transitionGlow * 0.20);
+      vAlpha = reveal * mix((0.34 + aSeed.z * 0.60) * breathe,
+                            0.90 + scan * 0.10, gather) * (1.0 - fusion * 0.96);
+      vEnergy = max(transitionGlow * 0.65, scan);
     }
   `;
 
@@ -260,7 +303,7 @@
 
   let started = -1;
   let done = false;
-  const END = 10.35;
+  const END = 12.85;
 
   function dispose() {
     gl.deleteBuffer(seedBuffer);
@@ -275,6 +318,7 @@
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform1f(timeLocation, t);
     gl.drawArrays(gl.POINTS, 0, count);
+    if (t >= 10.95) overlay.classList.add("fused");
     if (t >= END) {
       done = true;
       dispose();
